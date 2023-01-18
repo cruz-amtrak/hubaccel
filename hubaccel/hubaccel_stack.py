@@ -33,16 +33,20 @@ class HubaccelStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # create role for lambda , policy definition below
-        # for p in (config['aws_com_serv']['principals']):
+        # create role for lambda , policy definition below --> modify to 'aws_gov_serv' if needed
         hubaccel_lambda_role = iam.Role(self,
                 "hubaccel_lambda_role",
-                assumed_by=iam.ServicePrincipal(config['aws_com_serv']['principals'][0]),
+                assumed_by=iam.CompositePrincipal(
+                    iam.ServicePrincipal(config['aws_com_serv']['principals'][0]),
+                    iam.ServicePrincipal(config['aws_com_serv']['principals'][1]),
+                    iam.ServicePrincipal(config['aws_com_serv']['principals'][2])
+                ),
                 managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole"),
                 ],
             )
         
+        # creates kms key for s3 bucket
         bucket_encryption_key = kms.Key(self, "hubaccel-encrypt-key",
         alias="hubaccel-encrypt-key",
         enable_key_rotation=True
@@ -101,6 +105,8 @@ class HubaccelStack(Stack):
         )
 
         )
+        
+        # adds multiple account principles into the s3 bucket policy
         for p in (config['s3_lifecycle']['principals']):
             input_bucket.add_to_resource_policy(iam.PolicyStatement(
                 effect=iam.Effect.ALLOW,
@@ -185,5 +191,47 @@ class HubaccelStack(Stack):
         description="Allow Lambda, EC2, and SSM to carry out necessary operations",
         managed_policy_name="CsvManagerForSecurityHub",
         roles=[hubaccel_lambda_role.role_name]
-        )    
+        )
+
+        # creates event bridge rule with a lambda target
+        
+        # rule_target_input_properties = events.RuleTargetInput.from_text(
+        #     f"The Pipeline {events.RuleTargetInput.from_event_path('$.detail.pipeline')} has {events.RuleTargetInput.from_event_path('$.detail.state')}"
+        # )
+        # scan_rule = events.Rule(
+        #     self,
+        #     "event_rule_lambda_exporter",
+        #     description="Invoke Security Hub findings exporter periodically",
+        #     schedule=events.Schedule.expression(f"{config['frequency']['cron']}"),
+        # )
+        # scan_rule.add_target(event_targets.LambdaFunction(lambda_function, event=rule_target_input_properties))
+
+        rule_target_input_properties = events.CfnRule.InputTransformerProperty(
+            input_template="{ \"event\": <event> }",
+            input_paths_map={
+                "event": "$"
+            }
+        )
+        scan_rule = events.CfnRule(
+            self,
+            "event_rule_lambda_exporter",
+            description="Invoke Security Hub findings exporter periodically",
+            schedule_expression=f"{config['frequency']['cron']}",
+            targets=[events.CfnRule.TargetProperty(
+                id="lambda_function_id",
+                arn=lambda_function.function_arn,
+                input_transformer=rule_target_input_properties,
+            )],
+        )
+               
+        #creates policy for Event rule to invoke lambda function
+        lambda_function.add_permission(
+            "event_rule_policy",
+            action= "lambda:InvokeFunction",
+            principal=iam.ServicePrincipal("events.amazonaws.com"),
+            source_account=f"{Aws.ACCOUNT_ID}",
+            source_arn=f"{scan_rule.attr_arn}"
+        )
+
+    
 

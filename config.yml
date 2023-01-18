@@ -15,4 +15,6 @@ aws_gov_serv:
 primary_region:
   region: "us-east-1"
 code_archive:
-  key: "unknown"    
+  key: "unknown"
+frequency:
+  cron: "cron(0 8 ? * SUN *)"  
