@@ -16,9 +16,12 @@ env_main = cdk.Environment(
     )
 
 app = cdk.App()
-HubaccelStack(app, 
-    "HubaccelStack",
+
+baseStack= HubaccelStack(app, 
+    f"{config['app']['namespace']}-baseStack",
     env=env_main
     )
+
+Tags.of(baseStack).add("Name", "HubAccelerator")
 
 app.synth()

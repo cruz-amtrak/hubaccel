@@ -1,5 +1,18 @@
 app:
-  namespace: "amtrak-scanner-pipeline"
+  namespace: "amtrak-hub-accelerator"
 env:
   id: "111111111111"
   region: "us-east-1"
+s3_lifecycle:
+  principals: ["920945136934","256123394905"] 
+  expiration_period: 31
+  noncurrentversion_trans_period: 30
+  glacier_trans_period: 30
+aws_com_serv:
+  principals: ["lambda.amazonaws.com","ec2.amazonaws.com","ssm.amazonaws.com"] 
+aws_gov_serv:
+  principals: ["lambda.amazonaws.com","ec2.amazonaws.com","ssm.amazonaws.com"]
+primary_region:
+  region: "us-east-1"
+code_archive:
+  key: "unknown"    
