@@ -1,0 +1,5 @@
+app:
+  namespace: "amtrak-scanner-pipeline"
+env:
+  id: "111111111111"
+  region: "us-east-1"
