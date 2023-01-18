@@ -116,10 +116,10 @@ class HubaccelStack(Stack):
             )
             )
 
-        # creates lambda function
-        lambda_function = lambda_.Function(
+        # creates lambda function for exporter function
+        lambda_function_exporter = lambda_.Function(
             self,
-            "hubaccel_lambda",
+            "hubaccel_lambda_exporter",
             code=lambda_.Code.from_asset("lambda/exporter"),
             handler="lambda_function.lambda_handler",
             memory_size=512,
@@ -131,7 +131,24 @@ class HubaccelStack(Stack):
               "CSV_PRIMARY_REGION" :  f"{config['primary_region']['region']}",
             }
         )    
-        Tags.of(lambda_function).add("CodeArchiveKey", f"{config['code_archive']['key']}" )
+        Tags.of(lambda_function_exporter).add("CodeArchiveKey", f"{config['code_archive']['key']}" )
+
+        # creates lambda function for updater function
+        lambda_function_updater = lambda_.Function(
+            self,
+            "hubaccel_lambda_updater",
+            code=lambda_.Code.from_asset("lambda/updater"),
+            handler="lambda_function.lambda_handler",
+            memory_size=512,
+            timeout=Duration.seconds(900),
+            runtime=lambda_.Runtime.PYTHON_3_9,
+            description="Export SecurityHub findings to CSV in S3 bucket",
+            role=hubaccel_lambda_role,
+            environment={
+              "CSV_PRIMARY_REGION" :  f"{config['primary_region']['region']}",
+            }
+        )    
+        Tags.of(lambda_function_updater).add("CodeArchiveKey", f"{config['code_archive']['key']}" )
 
         # create IAM managed policy for LambdaRole
         managed_policy_lambda = iam.CfnManagedPolicy(self, "hubaccel_lambda_managed_role_policy",
@@ -170,13 +187,13 @@ class HubaccelStack(Stack):
                     dict(
                         Action=["lambda:InvokeFunction"], 
                         Effect="Allow",
-                        Resource=f"{lambda_function.function_arn}",
+                        Resource=[f"{lambda_function_exporter.function_arn}",f"{lambda_function_updater.function_arn}"],
                         Sid="Lambda"
                     ),
                     dict(
                         Action=["ec2:CreateNetworkInterface","ec2:DescribeNetworkInterfaces","ec2:DeleteNetworkInterface"], 
                         Effect="Allow",
-                        Resource=f"{lambda_function.function_arn}",
+                        Resource=f"{lambda_function_exporter.function_arn}",
                         Sid="EC2"
                     ),
                     dict(
@@ -219,13 +236,13 @@ class HubaccelStack(Stack):
             schedule_expression=f"{config['frequency']['cron']}",
             targets=[events.CfnRule.TargetProperty(
                 id="lambda_function_id",
-                arn=lambda_function.function_arn,
+                arn=lambda_function_exporter.function_arn,
                 input_transformer=rule_target_input_properties,
             )],
         )
                
         #creates policy for Event rule to invoke lambda function
-        lambda_function.add_permission(
+        lambda_function_exporter.add_permission(
             "event_rule_policy",
             action= "lambda:InvokeFunction",
             principal=iam.ServicePrincipal("events.amazonaws.com"),
