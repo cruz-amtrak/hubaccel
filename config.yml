@@ -17,4 +17,6 @@ primary_region:
 code_archive:
   key: "unknown"
 frequency:
-  cron: "cron(0 8 ? * SUN *)"  
+  cron: "cron(0 8 ? * SUN *)"
+partition:
+  value: "aws"

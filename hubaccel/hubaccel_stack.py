@@ -247,8 +247,107 @@ class HubaccelStack(Stack):
             action= "lambda:InvokeFunction",
             principal=iam.ServicePrincipal("events.amazonaws.com"),
             source_account=f"{Aws.ACCOUNT_ID}",
-            source_arn=f"{scan_rule.attr_arn}"
+            source_arn=f"{scan_rule.attr_arn}",
         )
+
+        # creates SSM document for lambda updater
+        content_updater= {
+            "schemaVersion": "0.3",
+            "description": "# Update Findings in Security Hub (csvUpdater). This Systems Manager (SSM) Automation allows you to update findings in Security Hub using csvUpdater.py",
+            "assumeRole": f"{hubaccel_lambda_role.role_arn}",
+            "parameters": {
+                "Source": {
+                    "default": "",
+                    "description": "An S3 URL containing the CSV file to update",
+                    "type": "String",
+                },
+            },
+            "mainSteps": [
+            {
+                "action": "aws:invokeLambdaFunction",
+                "name": "InvokeLambda",
+                "inputs": {
+                    "InvocationType": "RequestResponse",
+                    "FunctionName":   f"{lambda_function_updater.function_name}",
+                    "Payload": f"{{ \"input\" : \"{{{{Source}}}}\" , \"primaryRegion\" : \"{config['primary_region']['region']}\" }}",
+                },
+                "description": "Invoke the csvUpdater lambda function",
+                "outputs": [{
+                    "Name": "resultCode",
+                    "Selector": "$.Payload.resultCode",
+                    "Type": "Integer",
+                }],
+                "isEnd": True,
+            }
+            ],
+        }
+        cfn_document_updater = ssm.CfnDocument(
+            self,
+            "hubaccel_smm_document_lambda_updater_automation",
+            content=content_updater,
+            document_type="Automation"
+        )
+
+        # creates SSM document for lambda exporter
+        content_exporter= {
+            "schemaVersion": "0.3",
+            "description": "# Generate a Security Hub Findings Export (CSV Manager for Security Hub). This Systems Manager (SSM) Automation allows you to generate a CSV Manager for Security Hub export outside the normal export schedule.",
+            "assumeRole": f"{hubaccel_lambda_role.role_arn}",
+            "parameters": {
+                "Filters": {
+                    "default": "HighActive",
+                    "description": "The canned filter \"HighActive\" or a JSON-formatted string representing a Security Hub GetFindings API \"filter\" object",
+                    "type": "String",
+                },
+                "Partition": {
+                    "default": f"{config['partition']['value']}",
+                    "description": "The partition in which CSV Manager for Security Hub will operate",
+                    "type": "String",
+                },
+                "Regions": {
+                    "default": f"{config['primary_region']['region']}",
+                    "description": "The comma-separated list of regions in which CSV Manager for Security Hub will operate",
+                    "type": "String",
+                },
+            },
+            "mainSteps": [
+            {
+                "action": "aws:invokeLambdaFunction",
+                "name": "InvokeLambda",
+                "inputs": {
+                    "InvocationType": "RequestResponse",
+                    "FunctionName":   f"{lambda_function_exporter.function_name}",
+                    "Payload": f"{{ \"filters\" : \"{{{{Filters}}}}\" , \"partition\" : \"{{{{Partition}}}}\" , \"regions\" : \"{{{{Regions}}}}\" }}",
+                },
+                "description": "Invoke the CSV Manager for Security Hub lambda function",
+                "outputs": [
+                {
+                    "Name": "resultCode",
+                    "Selector": "$.Payload.resultCode",
+                    "Type": "Integer",
+                },
+                {
+                    "Name": "bucket",
+                    "Selector": "$.Payload.bucket",
+                    "Type": "String",
+                },
+                {
+                    "Name": "exportKey",
+                    "Selector": "$.Payload.exportKey",
+                    "Type": "String",
+                },
+                ],
+                "isEnd": True,
+            }
+            ],
+        }
+        cfn_document_exporter = ssm.CfnDocument(
+            self,
+            "hubaccel_smm_document_lambda_exporter_automation",
+            content=content_exporter,
+            document_type="Automation"
+        )
+
 
     
 
